@@ -16,7 +16,7 @@ import slogging.{LogLevel, LoggerConfig, PrintLoggerFactory}
 
 import scala.concurrent.ExecutionContext
 
-class ClinicBot(token: String)(implicit _system: ActorSystem)
+class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
   extends TelegramBot
     with BalePolling
     with Commands
