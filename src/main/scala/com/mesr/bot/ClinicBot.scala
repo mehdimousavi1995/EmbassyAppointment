@@ -8,7 +8,7 @@ import com.bot4s.telegram.methods._
 import com.bot4s.telegram.models.{KeyboardButton, ReplyKeyboardMarkup}
 import com.mesr.bot.Strings._
 import com.mesr.bot.helpers._
-import com.mesr.bot.sdk.{BaleAkkaHttpClient, BalePolling, MessageHandler}
+import com.mesr.bot.sdk.{BaleAkkaHttpClient, BalePolling, MessageHandler, StatefulBot}
 import io.circe.generic.semiauto._
 import io.circe.parser._
 import io.circe.{Decoder, Encoder}
@@ -20,12 +20,11 @@ class ClinicBot(token: String)(implicit _system: ActorSystem)
   extends TelegramBot
     with BalePolling
     with Commands
-    with InviteHelper
-    with PaymentHelper
-    with HintHelper
-    with LevelHelper
     with MessageHandler
-    with ClinicHelper {
+    with ClinicHelper
+    with  Constants
+    with StatefulBot[ClinicState] {
+
   override val system: ActorSystem = _system
   override val ec: ExecutionContext = executionContext
 
