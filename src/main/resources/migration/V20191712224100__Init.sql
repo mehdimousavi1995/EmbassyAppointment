@@ -4,4 +4,9 @@ CREATE TABLE IF NOT EXISTS admin_credentials(
   created_at TIMESTAMP,
   deleted_at TIMESTAMP,
   PRIMARY KEY(user_id)
-)
+);
+
+CREATE TABLE IF NOT EXISTS countries(
+  country_name VARCHAR(512),
+  PRIMARY KEY(country_name)
+);

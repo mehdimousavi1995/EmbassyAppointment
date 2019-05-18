@@ -2,7 +2,7 @@ package com.mesr.bot
 
 import akka.actor.ActorSystem
 import com.mesr.bot.persist.PostgresDBExtension
-import com.mesr.bot.persist.repos.AdminCredentialsRepo
+import com.mesr.bot.persist.repos.CountriesRepo
 import com.mesr.bot.sdk.BotConfig
 
 object Main extends App {
