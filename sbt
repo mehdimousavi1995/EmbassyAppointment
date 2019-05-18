@@ -5,11 +5,11 @@ echo 'You can use "df" for debug from first, "dm" to debug in the middle, "pr" t
 for var in "$@"
 do
     if [[ $var == "df" ]]; then
-	SBT_OPTS=$SBT_OPTS" -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8584 "
+	SBT_OPTS=$SBT_OPTS" -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005 "
 	args=${args#$var}
     fi
     if [[ $var == "dm" ]]; then
-	SBT_OPTS=$SBT_OPTS" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=8584 "
+	SBT_OPTS=$SBT_OPTS" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 "
 	args=${args#$var}
     fi
     if [[ $var == "pr" ]]; then

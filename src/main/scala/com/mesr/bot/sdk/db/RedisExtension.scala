@@ -4,11 +4,9 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor.{ActorRef, ActorSystem, ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvider, Props}
 import akka.pattern.ask
-import akka.routing.FromConfig
 import akka.util.Timeout
-import ObjectSerializer._
 import com.mesr.bot.sdk.db.entities._
-import io.circe.{Decoder, Encoder}
+import spray.json.{JsonReader, JsonWriter}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -47,15 +45,15 @@ final class RedisExtensionImpl(system: ActorSystem) extends Extension {
   def increase(key: String): Future[Option[Long]] =
     (redisClientActor ? RedisIncrease(key)).mapTo[Option[Long]]
 
-  def setObj[T](key: String, expirationTimeInSeconds: Long, value: T)(implicit encoder: Encoder[T]): Future[Boolean] = {
+  def setObj[T](key: String, expirationTimeInSeconds: Long, value: T)(implicit jsonWriter: JsonWriter[T]): Future[Boolean] = {
     val expirationTimeInMillis = expirationTimeInSeconds * 1000
-    (redisClientActor ? RedisPSetEX(key, expirationTimeInMillis, serialize(value))).mapTo[Boolean]
+    (redisClientActor ? RedisPSetEX(key, expirationTimeInMillis, ObjectSerializer.serialize(value))).mapTo[Boolean]
   }
 
-  def getObj[T](key: String)(implicit decoder: Decoder[T]): Future[Option[T]] = {
+  def getObj[T](key: String)(implicit jsonReader: JsonReader[T]): Future[Option[T]] = {
     (redisClientActor ? RedisGet(key)).mapTo[Option[String]].map { optValue ⇒
       optValue.map { value ⇒
-        deSerialize[T](value)
+        ObjectSerializer.deSerialize[T](value)
       }
     }
   }

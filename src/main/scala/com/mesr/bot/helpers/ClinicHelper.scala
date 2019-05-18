@@ -11,13 +11,8 @@ trait ClinicHelper extends TelegramBot{
     request(SendMessage(msg.source, helloMessageStr, replyMarkup = Some(ReplyKeyboardMarkup(
       Seq(
         Seq(
-          KeyboardButton(VisitTime),
-          KeyboardButton(BehSimaServices),
-          KeyboardButton(SmsBroadcastEnable),
-          KeyboardButton(AboutClinicAnd),
-//          KeyboardButton(ClinicCrew),
-          KeyboardButton(Support),
-          KeyboardButton(ClinicAddress)
+          KeyboardButton(BookEmbassyAppoinement),
+          KeyboardButton(MoreInfoAndContactAdmin)
         )
       )))))
   }

@@ -25,7 +25,8 @@ libraryDependencies ++= Seq(
   "tyrex" % "tyrex" % "1.0.1",
   "org.typelevel" %% "cats-core" % "1.4.0",
   "org.typelevel" %% "cats-free" % "1.4.0",
-  "com.github.kxbmap" %% "configs" % "0.4.4"
+  "com.github.kxbmap" %% "configs" % "0.4.4",
+  "io.spray" %% "spray-json" % "1.3.5"
 
 )
 
@@ -35,3 +36,6 @@ version in Docker := (version in ThisBuild).value
 dockerExposedPorts := Seq()
 dockerUpdateLatest := true
 logBuffered in Test := false
+
+
+fork in run := false

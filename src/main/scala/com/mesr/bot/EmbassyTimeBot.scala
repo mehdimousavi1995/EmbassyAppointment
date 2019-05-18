@@ -8,10 +8,10 @@ import com.bot4s.telegram.methods._
 import com.bot4s.telegram.models.{KeyboardButton, ReplyKeyboardMarkup}
 import com.mesr.bot.Strings._
 import com.mesr.bot.helpers._
-import com.mesr.bot.sdk.{BaleAkkaHttpClient, BalePolling, MessageHandler, StatefulBot}
-import io.circe.generic.semiauto._
-import io.circe.parser._
-import io.circe.{Decoder, Encoder}
+import com.mesr.bot.persist.PostgresDBExtension
+import com.mesr.bot.persist.repos.CountriesRepo
+import com.mesr.bot.sdk.db.RedisExtension
+import com.mesr.bot.sdk.{BaleAkkaHttpClient, BalePolling, MessageHandler}
 import slogging.{LogLevel, LoggerConfig, PrintLoggerFactory}
 
 import scala.concurrent.ExecutionContext
@@ -22,34 +22,22 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
     with Commands
     with MessageHandler
     with ClinicHelper
-    with  Constants
-    with StatefulBot[ClinicState] {
-
+    with RedisKeys
+{
+  import UserInformation._
   override val system: ActorSystem = _system
-  override val ec: ExecutionContext = executionContext
-
-  implicit val userStateEncoder: Encoder[UserState] = deriveEncoder[UserState]
-  implicit val userStateDecoder: Decoder[UserState] = deriveDecoder[UserState]
-
-  implicit val gameStateEncoder: Encoder[GameState] = deriveEncoder[GameState]
-  implicit val gameStateDecoder: Decoder[GameState] = deriveDecoder[GameState]
-
-  implicit val requestLevelEncoder: Encoder[RequestLevel] = deriveEncoder[RequestLevel]
-  implicit val requestLevelDecoder: Decoder[RequestLevel] = deriveDecoder[RequestLevel]
-
-  override implicit val encoder: Encoder[ClinicState] = deriveEncoder[ClinicState]
-  override implicit val decoder: Decoder[ClinicState] = deriveDecoder[ClinicState]
+  val ec: ExecutionContext = system.dispatcher
+  implicit val redisExt = RedisExtension(system)
+  implicit val pdb = PostgresDBExtension(system).db
 
   implicit val mat: ActorMaterializer = ActorMaterializer()
-
-  initializeState
 
   LoggerConfig.factory = PrintLoggerFactory()
   LoggerConfig.level = LogLevel.TRACE
 
   override val client: RequestHandler = new BaleAkkaHttpClient(token, "tapi.bale.ai")
 
-  import com.mesr.bot.sdk.UserCurrentState._
+  import UserCurrentState._
 
   onCommand("/start") { implicit msg =>
     startWithMainMenu
@@ -59,9 +47,9 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
     startWithMainMenu
   }
 
-  onTextFilter(VisitTime) { implicit msg =>
-    redisExt.set("state-" + msg.source, GettingName).map { _ =>
-      request(SendMessage(msg.source, "لطفا نام خود را وارد کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
+  onTextFilter(BookEmbassyAppoinement) { implicit msg =>
+    redisExt.set(sKey(msg.source.toString), GettingName).map { _ =>
+      request(SendMessage(msg.source, "لطفا نام و نام خانوادگی خود را وارد کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
         Seq(
           Seq(
             KeyboardButton(BackToMainMenu)
@@ -70,98 +58,127 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
     }
   }
 
-  onTextFilter(BehSimaServices) { implicit msg =>
-    val services = AllBehSimaServices.map { btn =>
-      "- " + btn + "\n"
-    }.foldLeft("")(_ + _)
+  onTextFilter(MoreInfoAndContactAdmin) { implicit msg =>
 
-    request(SendMessage(msg.source, "خدمات به سیما شامل موارد زیر می باشد:" + "\n" + services, replyMarkup = Some(ReplyKeyboardMarkup(
+    request(SendMessage(msg.source, "دستیار هوشمند ..." + "\n", replyMarkup = Some(ReplyKeyboardMarkup(
       Seq(
         Seq(
           KeyboardButton(BackToMainMenu)
         )
       )))))
-  }
-
-  onTextFilter(SmsBroadcastEnable) { implicit msg =>
-    request(SendMessage(msg.source, "خدمات پیامکی کلینیک برای شما فعال شد. از این پس هرگونه یادآوری وقت ویزیت، خدمات ويزه و تخفیف های کلینیک از طریق پیام کوتاه برای شما ارسال خواهد شد.", replyMarkup = Some(ReplyKeyboardMarkup(
-      Seq(
-        Seq(
-          KeyboardButton(BackToMainMenu)
-        )
-      )))))
-  }
-  onTextFilter(AboutClinicAnd) { implicit msg =>
-    request(SendMessage(msg.source, BehsimaInfo, replyMarkup = Some(ReplyKeyboardMarkup(
-      Seq(
-        Seq(
-          KeyboardButton(BackToMainMenu)
-        )
-      )))))
-  }
-
-  onTextFilter(Support) { implicit msg =>
-    redisExt.set("state-" + msg.source, FeedBackState).map { _ =>
-      request(SendMessage(msg.source, "لطفا هر گونه انتقاد و پیشنهاد را برای ما ارسال کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
-        Seq(
-          Seq(
-            KeyboardButton(BackToMainMenu)
-          )
-        )))))
-    }
-  }
-
-  onTextFilter(ClinicAddress) { implicit msg =>
-
-    val add = "تهران – خیابان ولیعصر – بالاتر از توانیر ( بیمارستان دی ) – کوچه شاهین – پلاک 10 – صندوق پستی : 14155-4949 " + "\n\n"
-    val tel = "تلفن: 88873000 الی 8 و 88876333 و 88876444 و 88875501 الی 4 " + "\n\n"
-    val namabar = "نمابر: 88772569 " + "\n\n"
-    val hameRozeh = "همه روزه بجز روز های تعطیل 8 تا 20 - پنج شنبه ها از 8 تا 18"
-
-    redisExt.set("state-" + msg.source, "").map { _ =>
-      request(SendMessage(msg.source, add + tel + namabar + hameRozeh, replyMarkup = Some(ReplyKeyboardMarkup(
-        Seq(
-          Seq(
-            KeyboardButton(BackToMainMenu)
-          )
-        )))))
-    }
   }
 
   onTextFilter(BackToMainMenu) { implicit msg =>
-    redisExt.delete("state-" + msg.source.toString)
+    redisExt.delete(sKey(msg.source.toString))
     startWithMainMenu
   }
 
 
   onTextDefaultFilter { implicit msg =>
-    redisExt.get("state-" + msg.source).map {
+    redisExt.get(sKey(msg.source.toString)).map {
       case Some(v) => v match {
         case GettingName =>
-          system.log.info("the stupid name of user is: {}", msg.text)
-          redisExt.set("state-" + msg.source, GettingPhoneNumber).map { _ =>
-            request(SendMessage(msg.source, "لطفا شماره موبایل خود را وارد کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
+          system.log.debug("the stupid name of user is: {}", msg.text)
+          system.log.debug("going to state: {}, user: {}", msg.source, GettingPhoneNumber)
+          for {
+            _ <- redisExt.set(sKey(msg.source.toString), GettingPhoneNumber)
+            _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), BookAppointmentTicket(msg.text))
+            _ <- request(SendMessage(msg.source, "لطفا شماره موبایل خود را وارد کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
               Seq(
                 Seq(
                   KeyboardButton(BackToMainMenu)
                 )
               )))))
-          }
+          } yield ()
+
 
         case GettingPhoneNumber =>
-          system.log.info("the stupid name of user is: {}", msg.text)
-          redisExt.delete("state-" + msg.source).map { _ =>
-            request(SendMessage(msg.source, "وقت ویزیت با موفقیت رزرو شد. وقت در نظر گرفته برای شما روز دوشنبه ۱۲ خرداد ۱۳۹۸ می باشد. لطفا از نیم ساعت قبل در کلینیک حضور داشته باشید.", replyMarkup = Some(ReplyKeyboardMarkup(
+          system.log.debug("going to state: {}, user: {}", msg.source, GettingPhoneNumber)
+          for {
+            _ <- redisExt.delete(sKey(msg.source.toString))
+            countries <- pdb.run(CountriesRepo.getAll)
+            _ <- redisExt.set(sKey(msg.source.toString),GettingCountryName)
+            // todo handle safely, validate phonenumber before saving in user state
+            embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(phoneNumber = msg.text))
+            _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
+            _ = request(SendMessage(msg.source, "لطفا یکی از کشور ها زیر را انتخاب کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
+              Seq(
+                countries.map(s => KeyboardButton(s.country)) ++
+                Seq(
+                  KeyboardButton(BackToMainMenu)
+                )
+              )))))
+          } yield ()
+
+        case GettingCountryName =>
+          for {
+            _ <- redisExt.delete(sKey(msg.source.toString))
+            _ <- redisExt.set(sKey(msg.source.toString), GettingDayOfFlight)
+            // todo handle safely, validate phonenumber before saving in user state, validate country
+            embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(country = msg.text))
+            _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
+            _ = request(SendMessage(msg.source, "لطفا روز میلادی سفر خود را وارد کنید(میلاد). عدد بین ۱ تا ۳۱", replyMarkup = Some(ReplyKeyboardMarkup(
+              Seq(
+                  Seq(
+                    KeyboardButton(BackToMainMenu)
+                  )
+              )))))
+          } yield ()
+
+        case GettingDayOfFlight =>
+          for {
+            _ <- redisExt.delete(sKey(msg.source.toString))
+            _ <- redisExt.set(sKey(msg.source.toString), GettingMonthOfFlight)
+            // todo handle safely, validate phonenumber before saving in user state
+            embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(dayOfFlight = msg.text.map(_.toInt)))
+            _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
+            // todo validation, add example for stupid users
+            _ = request(SendMessage(msg.source, "لطفا ماه میلادی سفر خود را انتخاب کنید", replyMarkup = Some(ReplyKeyboardMarkup(
+              Seq(
+                englishMonthLists.map(KeyboardButton(_)) ++
+                  Seq(
+                    KeyboardButton(BackToMainMenu)
+                  )
+              )))))
+          } yield ()
+
+        case GettingMonthOfFlight =>
+          for {
+            _ <- redisExt.delete(sKey(msg.source.toString))
+            _ <- redisExt.set(sKey(msg.source.toString), GettingYearOfFlight)
+            // todo handle safely, validate phonenumber before saving in user state
+            embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(monthOfFlight = msg.text))
+            _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
+            // todo validation, add example for stupid users
+            _ = request(SendMessage(msg.source, "لطفا سال میلادی سفر خود را وارد کنید", replyMarkup = Some(ReplyKeyboardMarkup(
+              Seq(
+                  Seq(
+                    KeyboardButton(BackToMainMenu)
+                  )
+              )))))
+          } yield ()
+
+        case GettingYearOfFlight =>
+          for {
+            _ <- redisExt.delete(sKey(msg.source.toString))
+            _ <- redisExt.set(sKey(msg.source.toString), GettingPassportScan)
+            // todo handle safely, validate phonenumber before saving in user state
+            embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(yearOfFlight = msg.text.map(_.toInt)))
+            _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
+            // todo validation, add example for stupid users
+            _ = request(SendMessage(msg.source, "لطفا اسکن پاسپورت خود را در قالب عکس ارسال کیند.", replyMarkup = Some(ReplyKeyboardMarkup(
               Seq(
                 Seq(
                   KeyboardButton(BackToMainMenu)
                 )
               )))))
-          }
+          } yield ()
+
+
 
         case FeedBackState =>
           system.log.info("the stupid name of user is: {}", msg.text)
-          redisExt.delete("state-" + msg.source).map { _ =>
+          redisExt.delete(sKey(msg.source.toString)).map { _ =>
             request(SendMessage(msg.source, "ممنون از بازخورد شما:)", replyMarkup = Some(ReplyKeyboardMarkup(
               Seq(
                 Seq(
@@ -196,8 +213,11 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
     //    val jsMap = json.right.toOption.flatMap(_.asObject).map(_.toMap).getOrElse(Map.empty)
     //    if (jsMap.get("status").flatMap(_.asString).getOrElse("FAILURE") == "SUCCESS") {
     //      successfulPayment(payment.totalAmount)
-    request(SendMessage(msg.source, "fuck you"))
+    request(SendMessage(msg.source, "مشکلی به وجود آمده است. لطفا فرآیند را از نو آغاز کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
+      Seq(
+        Seq(
+          KeyboardButton(BackToMainMenu)
+        )
+      )))))  }
 
-
-  }
 }
