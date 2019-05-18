@@ -14,6 +14,7 @@ object UserCurrentState {
   val GettingMonthOfFlight = "getting-month-of-flight"
   val GettingYearOfFlight = "getting-year-of-flight"
   val GettingPassportScan = "getting-passport-scan"
+  val ApprovingData = "approving-data"
 
 
   val FeedBackState = "feed-back-state"
@@ -27,7 +28,8 @@ case class BookAppointmentTicket(
                                   dayOfFlight: Option[Int] = None,
                                   monthOfFlight: Option[String] = None,
                                   yearOfFlight: Option[Int] = None,
-                                  passportFileId: Option[String] = None
+                                  passportFileId: Option[String] = None,
+                                  fillId: Option[String]= None
                                 )
 
 
@@ -35,7 +37,7 @@ object UserInformation extends DefaultJsonProtocol with NullOptions{
 
   val expirationInSeconds = 6000
 
-  implicit val bookAppointmentTicketSerializerJF: RootJsonFormat[BookAppointmentTicket] = jsonFormat7(BookAppointmentTicket)
+  implicit val bookAppointmentTicketSerializerJF: RootJsonFormat[BookAppointmentTicket] = jsonFormat8(BookAppointmentTicket)
 
 
   def setUserState[T](key: String, userInfo: T)(implicit redisExt: RedisExtensionImpl, jsonWriter: JsonWriter[T]): Future[Boolean] = {

@@ -7,6 +7,9 @@ object Strings {
   val MoreInfoAndContactAdmin = "اطلاعات بیشتر و تماس با ادمین"
   val BackToMainMenu = "بازگشت به منوی اصلی"
 
+  val InfoApproval = "ثبت و ادامه"
+  val CancelProcess = "لغو درخواست و بازگشت به منوی اصلی"
+
 
   val englishMonthLists = List(
     "ژانویه (January)",

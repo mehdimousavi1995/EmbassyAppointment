@@ -5,16 +5,16 @@ import akka.stream.ActorMaterializer
 import com.bot4s.telegram.api.declarative.Commands
 import com.bot4s.telegram.api.{RequestHandler, TelegramBot}
 import com.bot4s.telegram.methods._
-import com.bot4s.telegram.models.{KeyboardButton, ReplyKeyboardMarkup}
+import com.bot4s.telegram.models.{InputFile, KeyboardButton, ReplyKeyboardMarkup}
 import com.mesr.bot.Strings._
 import com.mesr.bot.helpers._
 import com.mesr.bot.persist.PostgresDBExtension
 import com.mesr.bot.persist.repos.CountriesRepo
 import com.mesr.bot.sdk.db.RedisExtension
-import com.mesr.bot.sdk.{BaleAkkaHttpClient, BalePolling, MessageHandler}
+import com.mesr.bot.sdk._
 import slogging.{LogLevel, LoggerConfig, PrintLoggerFactory}
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
   extends TelegramBot
@@ -22,9 +22,10 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
     with Commands
     with MessageHandler
     with ClinicHelper
-    with RedisKeys
-{
+    with RedisKeys {
+
   import UserInformation._
+
   override val system: ActorSystem = _system
   val ec: ExecutionContext = system.dispatcher
   implicit val redisExt = RedisExtension(system)
@@ -39,11 +40,19 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
 
   import UserCurrentState._
 
+  def clearUserCache(userId: String): Future[Unit] =
+    for {
+      _ <- redisExt.delete(uKey(userId))
+      _ <- redisExt.delete(sKey(userId))
+    } yield ()
+
   onCommand("/start") { implicit msg =>
+    clearUserCache(msg.source.toString)
     startWithMainMenu
   }
 
   onCommand("/help") { implicit msg =>
+    clearUserCache(msg.source.toString)
     startWithMainMenu
   }
 
@@ -69,10 +78,13 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
   }
 
   onTextFilter(BackToMainMenu) { implicit msg =>
-    redisExt.delete(sKey(msg.source.toString))
+    clearUserCache(msg.source.toString)
     startWithMainMenu
   }
-
+  onTextFilter(CancelProcess) { implicit msg =>
+    clearUserCache(msg.source.toString)
+    startWithMainMenu
+  }
 
   onTextDefaultFilter { implicit msg =>
     redisExt.get(sKey(msg.source.toString)).map {
@@ -97,16 +109,16 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
           for {
             _ <- redisExt.delete(sKey(msg.source.toString))
             countries <- pdb.run(CountriesRepo.getAll)
-            _ <- redisExt.set(sKey(msg.source.toString),GettingCountryName)
+            _ <- redisExt.set(sKey(msg.source.toString), GettingCountryName)
             // todo handle safely, validate phonenumber before saving in user state
             embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(phoneNumber = msg.text))
             _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
             _ = request(SendMessage(msg.source, "لطفا یکی از کشور ها زیر را انتخاب کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
               Seq(
                 countries.map(s => KeyboardButton(s.country)) ++
-                Seq(
-                  KeyboardButton(BackToMainMenu)
-                )
+                  Seq(
+                    KeyboardButton(BackToMainMenu)
+                  )
               )))))
           } yield ()
 
@@ -119,9 +131,9 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
             _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
             _ = request(SendMessage(msg.source, "لطفا روز میلادی سفر خود را وارد کنید(میلاد). عدد بین ۱ تا ۳۱", replyMarkup = Some(ReplyKeyboardMarkup(
               Seq(
-                  Seq(
-                    KeyboardButton(BackToMainMenu)
-                  )
+                Seq(
+                  KeyboardButton(BackToMainMenu)
+                )
               )))))
           } yield ()
 
@@ -152,9 +164,9 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
             // todo validation, add example for stupid users
             _ = request(SendMessage(msg.source, "لطفا سال میلادی سفر خود را وارد کنید", replyMarkup = Some(ReplyKeyboardMarkup(
               Seq(
-                  Seq(
-                    KeyboardButton(BackToMainMenu)
-                  )
+                Seq(
+                  KeyboardButton(BackToMainMenu)
+                )
               )))))
           } yield ()
 
@@ -175,6 +187,9 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
           } yield ()
 
 
+        case ApprovingData =>
+
+
 
         case FeedBackState =>
           system.log.info("the stupid name of user is: {}", msg.text)
@@ -187,6 +202,7 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
               )))))
           }
         case _ =>
+          clearUserCache(msg.source.toString)
           request(SendMessage(msg.source, "مشکلی به وجود آمده است. لطفا فرآیند را از نو آغاز کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
             Seq(
               Seq(
@@ -196,6 +212,7 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
 
       }
       case None =>
+        clearUserCache(msg.source.toString)
         request(SendMessage(msg.source, "مشکلی به وجود آمده است. لطفا فرآیند را از نو آغاز کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
           Seq(
             Seq(
@@ -204,6 +221,66 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
           )))))
     }
 
+
+  }
+
+  def bold(str: String) = s"*$str*"
+
+  def newLine = "\n"
+
+  def space = " "
+
+  def structApprovalBookEmbassyInfo(emb: BookAppointmentTicket): String = {
+    "اطلاعات شما به شرح زیر میباشد." + newLine +
+      "نام و نام خانوادگی: " + emb.fullName.get + newLine +
+      "شماره موبایل: " + emb.phoneNumber.get + newLine +
+      "وقت سفارت برای کشور: " + emb.country.get + newLine +
+      "تاریخ سفر: " + emb.dayOfFlight.get + space + emb.monthOfFlight.get + space + emb.yearOfFlight.get
+  }
+
+  import com.mesr.bot.sdk.ReplyKeyboardMarkupSerializer._
+
+  onPhotoFilter { msg =>
+    redisExt.get(sKey(msg.source.toString)).map {
+      case Some(value) => value match {
+        case GettingPassportScan =>
+          for {
+            _ <- redisExt.delete(sKey(msg.source.toString))
+            _ <- redisExt.set(sKey(msg.source.toString), ApprovingData)
+            fileId = msg.photo.get.head.fileId
+            embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(fillId = Some(fileId)))
+            _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
+            _ <- sendHttpRequest("https://tapi.bale.ai/ad10d06717a15e7771f2e567eb12e7603c6c4144/sendPhoto", SendCustomPhotoMessage(
+              msg.source.toString,
+              Some(structApprovalBookEmbassyInfo(embassyData)),
+              fileId,
+              Some(CustomReplyKeyboardMarkup(
+                Seq(
+                  Seq(
+                    CustomKeyboardButton(InfoApproval),
+                    CustomKeyboardButton(CancelProcess)
+                  )
+                )))
+            ))
+          } yield ()
+        case _ =>
+          clearUserCache(msg.source.toString)
+          request(SendMessage(msg.source, "مشکلی به وجود آمده است. لطفا فرآیند را از نو آغاز کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
+            Seq(
+              Seq(
+                KeyboardButton(BackToMainMenu)
+              )
+            )))))
+      }
+      case None =>
+        clearUserCache(msg.source.toString)
+        request(SendMessage(msg.source, "مشکلی به وجود آمده است. لطفا فرآیند را از نو آغاز کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
+          Seq(
+            Seq(
+              KeyboardButton(BackToMainMenu)
+            )
+          )))))
+    }
 
   }
 
@@ -218,6 +295,7 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
         Seq(
           KeyboardButton(BackToMainMenu)
         )
-      )))))  }
+      )))))
+  }
 
 }
