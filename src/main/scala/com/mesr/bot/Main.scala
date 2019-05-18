@@ -8,7 +8,7 @@ object Main extends App {
   val config = BotConfig.load()
   implicit val system: ActorSystem = ActorSystem("bot", config)
   try {
-    val bot = new EmbassyTimeBot(config.getString("bot.token"))
+    val bot = new EmbassyAppointmentBot(config.getString("bot.token"))
     PostgresDBExtension(system).db
     bot.run()
 

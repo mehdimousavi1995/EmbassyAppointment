@@ -33,7 +33,7 @@ case class BookAppointmentTicket(
                                 )
 
 
-object UserInformation extends DefaultJsonProtocol with NullOptions{
+trait UserInformation extends DefaultJsonProtocol with NullOptions{
 
   val expirationInSeconds = 6000
 
