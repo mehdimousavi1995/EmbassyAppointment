@@ -9,10 +9,13 @@ import com.bot4s.telegram.models.{InputFile, KeyboardButton, ReplyKeyboardMarkup
 import com.mesr.bot.Strings._
 import com.mesr.bot.helpers._
 import com.mesr.bot.persist.PostgresDBExtension
-import com.mesr.bot.persist.repos.CountriesRepo
-import com.mesr.bot.sdk.db.RedisExtension
+import com.mesr.bot.persist.model.RegisteredAppointment
+import com.mesr.bot.persist.repos.{CountriesRepo, RegisteredAppointmentRepo}
+import com.mesr.bot.sdk.db.{RedisExtension, RedisExtensionImpl}
 import com.mesr.bot.sdk._
 import slogging.{LogLevel, LoggerConfig, PrintLoggerFactory}
+import com.mesr.bot.sdk.ReplyKeyboardMarkupSerializer.{sendHttpRequest, _}
+import slick.jdbc.PostgresProfile
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -28,8 +31,8 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
 
   override val system: ActorSystem = _system
   val ec: ExecutionContext = system.dispatcher
-  implicit val redisExt = RedisExtension(system)
-  implicit val pdb = PostgresDBExtension(system).db
+  implicit val redisExt: RedisExtensionImpl = RedisExtension(system)
+  implicit val pdb: PostgresProfile.api.Database = PostgresDBExtension(system).db
 
   implicit val mat: ActorMaterializer = ActorMaterializer()
 
@@ -39,6 +42,8 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
   override val client: RequestHandler = new BaleAkkaHttpClient(token, "tapi.bale.ai")
 
   import UserCurrentState._
+
+  val AdminChatId = 2081746709
 
   def clearUserCache(userId: String): Future[Unit] =
     for {
@@ -188,7 +193,34 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
 
 
         case ApprovingData =>
-
+          for {
+            _ <- redisExt.delete(sKey(msg.source.toString))
+            embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get)
+            _ <- pdb.run(RegisteredAppointmentRepo.create(RegisteredAppointment(
+              chatId = msg.source.toString,
+              fullName = embassyData.fullName.get,
+              flightDate = embassyData.dayOfFlight.get + space + embassyData.monthOfFlight.get + space + embassyData.yearOfFlight.get,
+              fileId = embassyData.fillId.get
+            )))
+            _ = request(SendMessage(msg.source, "کاربر گرامی درخواست شما با موفقیت ثبت شد. تا ساعاتی دیگر کارشناسان ما برای تایید و انجام درخواست تبت شده، با شما تماس خواهند گرفت.", replyMarkup = Some(ReplyKeyboardMarkup(
+              Seq(
+                Seq(
+                  KeyboardButton(BackToMainMenu)
+                )
+              )))))
+            _ <- sendHttpRequest(SendCustomPhotoMessage(
+              AdminChatId.toString,
+              Some(structApprovalBookEmbassyInfo(embassyData)),
+              embassyData.fillId.get,
+              Some(CustomReplyKeyboardMarkup(
+                Seq(
+                  Seq(
+                    CustomKeyboardButton(BackToMainMenu)
+                  )
+                )))
+            ))
+            _ <- clearUserCache(msg.source.toString)
+          } yield ()
 
 
         case FeedBackState =>
@@ -232,13 +264,12 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
 
   def structApprovalBookEmbassyInfo(emb: BookAppointmentTicket): String = {
     "اطلاعات شما به شرح زیر میباشد." + newLine +
-      "نام و نام خانوادگی: " + emb.fullName.get + newLine +
-      "شماره موبایل: " + emb.phoneNumber.get + newLine +
-      "وقت سفارت برای کشور: " + emb.country.get + newLine +
-      "تاریخ سفر: " + emb.dayOfFlight.get + space + emb.monthOfFlight.get + space + emb.yearOfFlight.get
+      bold("نام و نام خانوادگی: ") + emb.fullName.get + newLine +
+      bold("شماره موبایل: ") + emb.phoneNumber.get + newLine +
+      bold("وقت سفارت برای کشور: ") + emb.country.get + newLine +
+      bold("تاریخ سفر: ") + emb.dayOfFlight.get + space + emb.monthOfFlight.get + space + emb.yearOfFlight.get
   }
 
-  import com.mesr.bot.sdk.ReplyKeyboardMarkupSerializer._
 
   onPhotoFilter { msg =>
     redisExt.get(sKey(msg.source.toString)).map {
@@ -250,7 +281,7 @@ class EmbassyTimeBot(token: String)(implicit _system: ActorSystem)
             fileId = msg.photo.get.head.fileId
             embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(fillId = Some(fileId)))
             _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
-            _ <- sendHttpRequest("https://tapi.bale.ai/ad10d06717a15e7771f2e567eb12e7603c6c4144/sendPhoto", SendCustomPhotoMessage(
+            _ <- sendHttpRequest(SendCustomPhotoMessage(
               msg.source.toString,
               Some(structApprovalBookEmbassyInfo(embassyData)),
               fileId,

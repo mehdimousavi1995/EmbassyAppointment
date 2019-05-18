@@ -29,7 +29,7 @@ object ReplyKeyboardMarkupSerializer extends DefaultJsonProtocol with NullOption
   implicit val sendCustomPhotoMessageSerializerJF: RootJsonFormat[SendCustomPhotoMessage] = jsonFormat4(SendCustomPhotoMessage)
   import spray.json._
 
-  def sendHttpRequest(endpoint: String, sendPhoto: SendCustomPhotoMessage)(implicit system: ActorSystem): Future[HttpResponse] = {
+  def sendHttpRequest(sendPhoto: SendCustomPhotoMessage, endpoint: String = "https://tapi.bale.ai/ad10d06717a15e7771f2e567eb12e7603c6c4144/sendPhoto")(implicit system: ActorSystem): Future[HttpResponse] = {
     Http().singleRequest(
       HttpRequest(HttpMethods.POST, Uri(endpoint), Nil, HttpEntity(ContentTypes.`application/json`, sendPhoto.toJson.toString))
     )
