@@ -90,6 +90,7 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
       case Some(GettingMonthOfFlight) => gettingMonthOfFlightHandler()
       case Some(GettingYearOfFlight) => gettingYearOfFlightHandler()
       case Some(ApprovingData) => handleApprovingDataHandler()
+      case Some(GettingPassportScan) => gettingPassportScanneErrorHandler()
       case _ => unexpectedSituationHandler
     }
   }
