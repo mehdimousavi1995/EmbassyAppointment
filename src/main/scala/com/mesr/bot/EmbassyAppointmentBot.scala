@@ -5,10 +5,11 @@ import akka.stream.ActorMaterializer
 import com.bot4s.telegram.api.declarative.Commands
 import com.bot4s.telegram.api.{RequestHandler, TelegramBot}
 import com.bot4s.telegram.methods._
-import com.bot4s.telegram.models.{KeyboardButton, ReplyKeyboardMarkup}
+import com.bot4s.telegram.models.{KeyboardButton, Message, ReplyKeyboardMarkup}
 import com.mesr.bot.Strings._
 import com.mesr.bot.helpers._
 import com.mesr.bot.persist.PostgresDBExtension
+import com.mesr.bot.persist.repos.{AdminCredentialsRepo, CountriesRepo}
 import com.mesr.bot.sdk._
 import com.mesr.bot.sdk.db.{RedisExtension, RedisExtensionImpl}
 import slick.jdbc.PostgresProfile
@@ -23,7 +24,7 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
     with MessageHandler
     with EmbassyAppointmentHelper
     with RedisKeys
-    with UserInformation{
+    with UserInformation {
 
   override val system: ActorSystem = _system
   val ec: ExecutionContext = system.dispatcher
@@ -38,6 +39,7 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
   override val client: RequestHandler = new BaleAkkaHttpClient(token, "tapi.bale.ai")
 
   import UserCurrentState._
+  import StringMaker._
 
   val AdminChatId = 2081746709
 
@@ -52,7 +54,57 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
     startWithMainMenu
   }
 
-  onTextFilter(BookEmbassyAppoinement) { implicit msg =>
+
+  onTextFilter(AdminAddOrRemoveCountry) { implicit msg =>
+    isAdmin.map { exist =>
+      if (exist) {
+        pdb.run(CountriesRepo.getAll).map { countries =>
+          val text = newText("کشور های اضافه شده به شرح زیر می باشد") +
+            countries.map(s => newText("- " + s.country)).foldLeft("")(_ + _) +
+            newText("لطفا یکی از گزینه های زیر را انتخاب کنید.")
+          request(SendMessage(msg.source, text, replyMarkup = Some(ReplyKeyboardMarkup(
+            Seq(
+              Seq(
+                KeyboardButton(AdminAddCountry),
+                KeyboardButton(AdminRemoveCountry),
+                KeyboardButton(BackToMainMenu)))))))
+        }
+
+      } else youDoNotHavePermissionGarbage
+    }
+  }
+
+
+  import StringMaker._
+
+  onTextFilter(AdminAddCountry) { implicit msg =>
+    for {
+      exist <- isAdmin
+      _ = if (exist) {
+        redisExt.set(admin_s_key(msg.source.toString), AdminAddingCountry)
+        request(SendMessage(msg.source, INSERT_COUNTRY_NAMES,
+          replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+      } else youDoNotHavePermissionGarbage
+
+    } yield ()
+  }
+
+  onTextFilter(AdminRemoveCountry) { implicit msg =>
+    for {
+      exist <- isAdmin
+      countries <- pdb.run(CountriesRepo.getAll)
+      buttons = countries.map { c => KeyboardButton(c.country) }
+      _ = if (exist) {
+        redisExt.set(admin_s_key(msg.source.toString), AdminRemovingCountry)
+        request(SendMessage(msg.source, INSERT_COUNTRY_NAMES,
+          replyMarkup = Some(ReplyKeyboardMarkup(Seq(buttons ++ Seq(KeyboardButton(BackToMainMenu)))))))
+      } else youDoNotHavePermissionGarbage
+
+    } yield ()
+  }
+
+
+  onTextFilter(BookEmbassyAppointment) { implicit msg =>
     redisExt.set(sKey(msg.source.toString), GettingName).map { _ =>
       request(SendMessage(msg.source, "لطفا نام و نام خانوادگی خود را وارد کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
         Seq(
@@ -64,7 +116,7 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
   }
 
   onTextFilter(MoreInfoAndContactAdmin) { implicit msg =>
-    request(SendMessage(msg.source, "دستیار هوشمند ..." + "\n", replyMarkup = Some(ReplyKeyboardMarkup(
+    request(SendMessage(msg.source,  BOT_INTRODUCTION, replyMarkup = Some(ReplyKeyboardMarkup(
       Seq(
         Seq(
           KeyboardButton(BackToMainMenu)
@@ -82,21 +134,23 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
   }
 
   onTextDefaultFilter { implicit msg =>
-    redisExt.get(sKey(msg.source.toString)).map {
-      case Some(GettingName) => gettingNameHandler
-      case Some(GettingPhoneNumber) => gettingPhoneHandler
-      case Some(GettingCountryName) => gettingCountryHandler
-      case Some(GettingDayOfFlight) => gettingDayOfFlightHandler
-      case Some(GettingMonthOfFlight) => gettingMonthOfFlightHandler()
-      case Some(GettingYearOfFlight) => gettingYearOfFlightHandler()
-      case Some(ApprovingData) => handleApprovingDataHandler()
-      case Some(GettingPassportScan) => gettingPassportScanneErrorHandler()
+    redisExt.get(sKey(msg.source.toString)).zip(redisExt.get(admin_s_key(msg.source.toString))).map {
+      case (_, Some(AdminAddingCountry)) => adminAddingCountryHandler
+      case (_, Some(AdminRemovingCountry)) => adminRemovingCountryHandler()
+      case (Some(GettingName), _) => gettingNameHandler
+      case (Some(GettingPhoneNumber), _) => gettingPhoneHandler
+      case (Some(GettingCountryName), _) => gettingCountryHandler
+      case (Some(GettingDayOfFlight), _) => gettingDayOfFlightHandler
+      case (Some(GettingMonthOfFlight), _) => gettingMonthOfFlightHandler()
+      case (Some(GettingYearOfFlight), _) => gettingYearOfFlightHandler()
+      case (Some(ApprovingData), _) => handleApprovingDataHandler()
+      case (Some(GettingPassportScan), _) => gettingPassportScanneErrorHandler()
       case _ => unexpectedSituationHandler
     }
   }
 
 
-  onPhotoFilter {implicit msg =>
+  onPhotoFilter { implicit msg =>
     redisExt.get(sKey(msg.source.toString)).map {
       case Some(GettingPassportScan) => gettingPassportScanHandler
       case _ => unexpectedSituationHandler()

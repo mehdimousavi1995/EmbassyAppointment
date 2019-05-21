@@ -5,9 +5,12 @@ package com.mesr.bot.helpers
 trait RedisKeys {
 
   private val EmbassyAppointment = "embassy-appointment"
+  private val EmbassyAppointmentAdmin = "embassy_appointment_admin"
 
-  def sKey(userId: String): String = s"state-$EmbassyAppointment-$userId"
+  def sKey(chatId: String): String = s"state-$EmbassyAppointment-$chatId"
 
-  def uKey(userId: String): String = s"user-info-$EmbassyAppointment-$userId"
+  def admin_s_key(chatId: String) = s"state-$EmbassyAppointmentAdmin-$chatId"
+
+  def uKey(chatId: String): String = s"user-info-$EmbassyAppointment-$chatId"
 
 }

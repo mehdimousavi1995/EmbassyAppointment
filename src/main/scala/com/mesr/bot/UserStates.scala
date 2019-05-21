@@ -17,6 +17,9 @@ object UserCurrentState {
   val ApprovingData = "approving-data"
 
 
+  val AdminAddingCountry = "admin-adding-countries"
+  val AdminRemovingCountry = "admin-removing-country"
+
   val FeedBackState = "feed-back-state"
 }
 

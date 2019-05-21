@@ -1,5 +1,6 @@
 package com.mesr.bot.persist.repos
 
+import com.mesr.bot.persist.ActorPostgresDriver
 import com.mesr.bot.persist.ActorPostgresDriver.api._
 import com.mesr.bot.persist.model.Country
 import slick.dbio.Effect
@@ -14,11 +15,14 @@ final class CountriesRepo(tag: Tag) extends Table[Country](tag, "countries") {
 
 }
 
-object CountriesRepo  {
+object CountriesRepo {
   val countries: TableQuery[CountriesRepo] = TableQuery[CountriesRepo]
 
   def create(country: String): FixedSqlAction[Int, NoStream, Effect.Write] =
     countries += Country(country)
+
+  def exists(country: String): FixedSqlAction[Boolean, ActorPostgresDriver.api.NoStream, Effect.Read] =
+    countries.filter(_.countryName === country).exists.result
 
   def delete(country: String): FixedSqlAction[Int, NoStream, Effect.Write] =
     countries.filter(_.countryName === country).delete

@@ -56,6 +56,12 @@ object StringMaker extends StringMakers with Converter with OperatorExtension {
   val ENTER_YEAR_OF_FLIGHT_AGAIN = newText("سال میلادی *معتبر* نیست") + newText("سال میلادی از 2019 شروع میشود.") + "لطفا *سال میلادی سفر خود* را مجددا وارد کنید."
   val SEND_SCAN_OF_YOUR_PASSPORT = "لطفا اسکن پاسپورت خود را در قالب عکس ارسال کیند."
 
+
+  val INSERT_COUNTRY_NAMES = newText("لطفا نام کشور یا کشور ها را وارد کنید.") + newText("بطور مثال: آلمان،فنلاند،فرانسه")
+
+  val CHOOSE_A_COUNTRY_TO_REMOVED = newText("لطفا یکی از کشور های زیر را برای حذف انتخاب کنید.")
+  val OPERATION_HAS_BEEN_DON_SUCCESSFULLY = newText("عملیات با موفقیت انجام شد.")
+
   def YOUR_REQUEST_HAS_BEEN_REGISTERED_AND_WE_WILL_REACH_YOU_IN_A_FEW_HOURS(clientName: String) =
     bold(clientName) + " عزیز درخواست شما با موفقیت ثبت شد. در ساعات آتی کارشناسان ما به منظور تایید و پیگیری درخواست ثبت شده، با شما تماس خواهند گرفت."
 
@@ -63,6 +69,8 @@ object StringMaker extends StringMakers with Converter with OperatorExtension {
 
   val INVALID_INPUT_PLEASE_SEND_PASSPORT_SCAN = newText("ورودی نامعتبر است") + newText("لطفا *اسکن عکس پاسپورت* را مجددا ارسال کنید.")
 
+
+  val BOT_INTRODUCTION = "*دستیار اخذ وقت سفارت*\nاطلاعات بیشتر و ارتباط با ادمین: @ebmassy_appointment_admin\nپس از ثبت درخواست وقت سفارت، کارشناسان ما با شما تماس گرفته و پس از تایید اطلاعات و تعیین هزینه های وقت سفارت درخواست شما انجام می شود.\nلازم به ذکر است که *پرداخت هزینه ها، بس از انجام درخواست شما* صورت می پذیرد."
 
   import spray.json._
 

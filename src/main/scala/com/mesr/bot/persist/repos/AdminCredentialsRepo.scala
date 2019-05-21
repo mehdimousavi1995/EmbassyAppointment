@@ -12,7 +12,7 @@ import slick.sql.FixedSqlAction
 
 final class AdminCredentialsRepo(tag: Tag) extends Table[AdminCredential](tag, "admin_credentials") {
 
-  def chatId: Rep[Int] = column[Int]("chat_id", O.PrimaryKey)
+  def chatId: Rep[String] = column[String]("chat_id", O.PrimaryKey)
 
   def fullName: Rep[String] = column[String]("full_name")
 
@@ -29,13 +29,13 @@ object AdminCredentialsRepo  {
 
   val activeSysAdmin: Query[AdminCredentialsRepo, AdminCredential, Seq] = adminCredentials.filter(_.deletedAt.isEmpty)
 
-  def create(chatId: Int, fullName: String): FixedSqlAction[Int, NoStream, Effect.Write] =
+  def create(chatId: String, fullName: String): FixedSqlAction[Int, NoStream, Effect.Write] =
     adminCredentials += AdminCredential(chatId, fullName)
 
-  def exists(userId: Int): FixedSqlAction[Boolean, ActorPostgresDriver.api.NoStream, Effect.Read] =
-    activeSysAdmin.filter(s ⇒ s.chatId === userId).exists.result
+  def exists(chatId: String): FixedSqlAction[Boolean, ActorPostgresDriver.api.NoStream, Effect.Read] =
+    activeSysAdmin.filter(s ⇒ s.chatId === chatId).exists.result
 
 
-  def delete(userId: Int): FixedSqlAction[Int, NoStream, Effect.Write] =
-    adminCredentials.filter(s ⇒ s.deletedAt.isEmpty && s.chatId === userId).map(_.deletedAt).update(Some(TimeUtils.now))
+  def delete(chatId: String): FixedSqlAction[Int, NoStream, Effect.Write] =
+    adminCredentials.filter(s ⇒ s.deletedAt.isEmpty && s.chatId === chatId).map(_.deletedAt).update(Some(TimeUtils.now))
 }

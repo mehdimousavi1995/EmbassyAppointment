@@ -6,4 +6,4 @@ import com.mesr.bot.util.TimeUtils
 
 
 @SerialVersionUID(1L)
-case class AdminCredential(userId: Int, fullName: String, createdAt: LocalDateTime = TimeUtils.now, deletedAt: Option[LocalDateTime] = None)
+case class AdminCredential(chatId: String, fullName: String, createdAt: LocalDateTime = TimeUtils.now, deletedAt: Option[LocalDateTime] = None)

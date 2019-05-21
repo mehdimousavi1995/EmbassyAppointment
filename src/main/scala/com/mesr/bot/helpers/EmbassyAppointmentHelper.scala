@@ -8,7 +8,7 @@ import com.mesr.bot.{BookAppointmentTicket, EmbassyAppointmentBot}
 import com.mesr.bot.Strings._
 import com.mesr.bot.UserCurrentState._
 import com.mesr.bot.persist.model.RegisteredAppointment
-import com.mesr.bot.persist.repos.{CountriesRepo, RegisteredAppointmentRepo}
+import com.mesr.bot.persist.repos.{AdminCredentialsRepo, CountriesRepo, RegisteredAppointmentRepo}
 import com.mesr.bot.sdk.{CustomKeyboardButton, CustomReplyKeyboardMarkup, SendCustomPhotoMessage}
 import com.mesr.bot.sdk.ReplyKeyboardMarkupSerializer.sendHttpRequest
 
@@ -42,15 +42,63 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
       "تاریخ سفر:" + space + emb.dayOfFlight.get + space + emb.monthOfFlight.get + space + emb.yearOfFlight.get
   }
 
-
-  def startWithMainMenu()(implicit system: ActorSystem, msg: Message): Unit = {
-    request(SendMessage(msg.source, helloMessageStr, replyMarkup = Some(ReplyKeyboardMarkup(
+  def youDoNotHavePermissionGarbage()(implicit system: ActorSystem, msg: Message): Unit = {
+    request(SendMessage(msg.source, "شما دسترسی ادمین نداری. آشغال", replyMarkup = Some(ReplyKeyboardMarkup(
       Seq(
         Seq(
-          KeyboardButton(BookEmbassyAppoinement),
-          KeyboardButton(MoreInfoAndContactAdmin)
+          KeyboardButton(BackToMainMenu)
         )
       )))))
+  }
+
+  import StringMaker._
+
+  def isAdmin()(implicit msg: Message) =
+    pdb.run(AdminCredentialsRepo.exists(msg.source.toString))
+
+  def adminAddingCountryHandler()(implicit system: ActorSystem, msg: Message): Future[Any] = {
+    isAdmin().map { exist =>
+      if (exist) {
+        val countries = msg.text.get.filter(_ != ' ').split("،").toSet.toList
+        for {
+          _ <- redisExt.delete(admin_s_key(msg.source.toString))
+          _ <- Future.sequence(countries.map { c =>
+            pdb.run(CountriesRepo.exists(c)).map { ex =>
+              if (ex) Future.successful() else pdb.run(CountriesRepo.create(c))
+            }
+          })
+          _ <- request(SendMessage(msg.source, OPERATION_HAS_BEEN_DON_SUCCESSFULLY,
+            replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+        } yield ()
+      } else youDoNotHavePermissionGarbage
+    }
+  }
+
+  def adminRemovingCountryHandler()(implicit system: ActorSystem, msg: Message): Future[Any] = {
+    isAdmin().map { exist =>
+      if (exist) {
+        val country = msg.text.get.trim
+        for {
+          _ <- redisExt.delete(admin_s_key(msg.source.toString))
+          _ <- pdb.run(CountriesRepo.delete(country))
+          _ = request(SendMessage(msg.source, OPERATION_HAS_BEEN_DON_SUCCESSFULLY,
+            replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+        } yield ()
+      } else youDoNotHavePermissionGarbage()
+    }
+  }
+
+  def startWithMainMenu()(implicit system: ActorSystem, msg: Message): Unit = {
+    isAdmin.map { exists =>
+      val btns = (if (exists) Seq(
+        KeyboardButton(AdminAddOrRemoveCountry)
+      ) else Seq.empty) ++ Seq(
+        KeyboardButton(BookEmbassyAppointment),
+        KeyboardButton(MoreInfoAndContactAdmin)
+      )
+      request(SendMessage(msg.source, helloMessageStr, replyMarkup = Some(ReplyKeyboardMarkup(Seq(btns)))))
+    }
+
   }
 
   import StringMaker._

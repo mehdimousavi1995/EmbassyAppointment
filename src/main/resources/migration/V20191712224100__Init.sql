@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS admin_credentials(
-  chat_id INT NOT NULL,
+  chat_id VARCHAR(512) NOT NULL,
   full_name VARCHAR(512),
   created_at TIMESTAMP,
   deleted_at TIMESTAMP,
