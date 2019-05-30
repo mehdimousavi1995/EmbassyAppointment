@@ -7,14 +7,14 @@ object Main extends App {
 
   val config = BotConfig.load()
   implicit val system: ActorSystem = ActorSystem("bot", config)
-  try {
+//  try {
     val bot = new EmbassyAppointmentBot(config.getString("bot.token"))
     PostgresDBExtension(system).db
     bot.run()
 
 
-  } catch {
-    case e: Throwable =>
-      system.log.error("Exception, caused by: {}", e)
-  }
+//  } catch {
+//    case e: Throwable =>
+//      system.log.error("Exception, caused by: {}", e)
+//  }
 }

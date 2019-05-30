@@ -8,7 +8,7 @@ import com.mesr.bot.persist.model.AdminCredential
 import com.mesr.bot.util.TimeUtils
 import slick.dbio.Effect
 import slick.lifted.ProvenShape
-import slick.sql.FixedSqlAction
+import slick.sql.{FixedSqlAction, FixedSqlStreamingAction}
 
 final class AdminCredentialsRepo(tag: Tag) extends Table[AdminCredential](tag, "admin_credentials") {
 
@@ -28,6 +28,8 @@ object AdminCredentialsRepo  {
   val adminCredentials: TableQuery[AdminCredentialsRepo] = TableQuery[AdminCredentialsRepo]
 
   val activeSysAdmin: Query[AdminCredentialsRepo, AdminCredential, Seq] = adminCredentials.filter(_.deletedAt.isEmpty)
+
+  def getAllActive = activeSysAdmin.map(_.chatId).result
 
   def create(chatId: String, fullName: String): FixedSqlAction[Int, NoStream, Effect.Write] =
     adminCredentials += AdminCredential(chatId, fullName)

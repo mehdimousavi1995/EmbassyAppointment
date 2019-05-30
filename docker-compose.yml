@@ -1,0 +1,40 @@
+version: '2.1'
+services:
+  redis:
+    image: docker.bale.ai/bot/redis
+    container_name: redis
+    hostname: redis
+    mem_limit: 64M
+    ports:
+      - "6379:6379"
+    command: >
+     --requirepass foobared
+
+  postgres:
+    image: postgres:9.5
+    container_name: postgres
+    hostname: postgres
+    mem_limit: 64M
+    environment:
+      - POSTGRES_USER=embassy
+      - POSTGRES_PASSWORD=embassy
+      - POSTGRES_DB=embassy
+      - TZ=Asia/Tehran
+    volumes:
+      - ~/docker/volumes/postgres/:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432"
+
+  embassy-appointment:
+    image: embassy_appointment:0.3-3
+    hostname: embassy-appointment
+    container_name: embassy_appointment
+    mem_limit: 200M
+    volumes:
+      - ~/embassy/conf/:/opt/docker/conf/
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PASSWORD=embassy
+      - POSTGRES-USERNAME=embassy
+      - POSTGRES-DB=embassy
+      - REDIS_HOST=redis

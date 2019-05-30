@@ -5,13 +5,14 @@ import akka.stream.ActorMaterializer
 import com.bot4s.telegram.api.declarative.Commands
 import com.bot4s.telegram.api.{RequestHandler, TelegramBot}
 import com.bot4s.telegram.methods._
-import com.bot4s.telegram.models.{KeyboardButton, Message, ReplyKeyboardMarkup}
+import com.bot4s.telegram.models.{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup}
 import com.mesr.bot.Strings._
 import com.mesr.bot.helpers._
 import com.mesr.bot.persist.PostgresDBExtension
-import com.mesr.bot.persist.repos.{AdminCredentialsRepo, CountriesRepo}
+import com.mesr.bot.persist.repos.CountriesRepo
 import com.mesr.bot.sdk._
 import com.mesr.bot.sdk.db.{RedisExtension, RedisExtensionImpl}
+import com.mesr.bot.util.ButtonsUtils
 import slick.jdbc.PostgresProfile
 import slogging.{LogLevel, LoggerConfig, PrintLoggerFactory}
 
@@ -32,17 +33,15 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
   implicit val pdb: PostgresProfile.api.Database = PostgresDBExtension(system).db
 
   implicit val mat: ActorMaterializer = ActorMaterializer()
+  val host: String = system.settings.config.getString("bot.host")
 
   LoggerConfig.factory = PrintLoggerFactory()
   LoggerConfig.level = LogLevel.TRACE
 
-  override val client: RequestHandler = new BaleAkkaHttpClient(token, "tapi.bale.ai")
+  override val client: RequestHandler = new BaleAkkaHttpClient(token, host)
 
-  import UserCurrentState._
   import StringMaker._
-
-  val AdminChatId = 2081746709
-
+  import UserCurrentState._
 
   onCommand("/start") { implicit msg =>
     clearUserCache(msg.source.toString)
@@ -54,6 +53,11 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
     startWithMainMenu
   }
 
+  onCommand("/cancel") { implicit msg =>
+    clearUserCache(msg.source.toString)
+    startWithMainMenu()
+  }
+
 
   onTextFilter(AdminAddOrRemoveCountry) { implicit msg =>
     isAdmin.map { exist =>
@@ -62,14 +66,12 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
           val text = newText("کشور های اضافه شده به شرح زیر می باشد") +
             countries.map(s => newText("- " + s.country)).foldLeft("")(_ + _) +
             newText("لطفا یکی از گزینه های زیر را انتخاب کنید.")
-          request(SendMessage(msg.source, text, replyMarkup = Some(ReplyKeyboardMarkup(
+          request(SendMessage(msg.source, text, replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(
             Seq(
-              Seq(
-                KeyboardButton(AdminAddCountry),
-                KeyboardButton(AdminRemoveCountry),
-                KeyboardButton(BackToMainMenu)))))))
+              KeyboardButton(AdminAddCountry),
+              KeyboardButton(AdminRemoveCountry),
+              KeyboardButton(BackToMainMenu))))))
         }
-
       } else youDoNotHavePermissionGarbage
     }
   }
@@ -82,8 +84,7 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
       exist <- isAdmin
       _ = if (exist) {
         redisExt.set(admin_s_key(msg.source.toString), AdminAddingCountry)
-        request(SendMessage(msg.source, INSERT_COUNTRY_NAMES,
-          replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+        request(SendMessage(msg.source, INSERT_COUNTRY_NAMES))
       } else youDoNotHavePermissionGarbage
 
     } yield ()
@@ -97,7 +98,9 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
       _ = if (exist) {
         redisExt.set(admin_s_key(msg.source.toString), AdminRemovingCountry)
         request(SendMessage(msg.source, INSERT_COUNTRY_NAMES,
-          replyMarkup = Some(ReplyKeyboardMarkup(Seq(buttons ++ Seq(KeyboardButton(BackToMainMenu)))))))
+          replyMarkup = Some(
+            ReplyKeyboardMarkup(ButtonsUtils.splitList(buttons) ++ Seq(Seq(KeyboardButton(BackToMainMenu)))
+            ))))
       } else youDoNotHavePermissionGarbage
 
     } yield ()
@@ -106,28 +109,20 @@ class EmbassyAppointmentBot(token: String)(implicit _system: ActorSystem)
 
   onTextFilter(BookEmbassyAppointment) { implicit msg =>
     redisExt.set(sKey(msg.source.toString), GettingName).map { _ =>
-      request(SendMessage(msg.source, "لطفا نام و نام خانوادگی خود را وارد کنید.", replyMarkup = Some(ReplyKeyboardMarkup(
-        Seq(
-          Seq(
-            KeyboardButton(BackToMainMenu)
-          )
-        )))))
+      request(SendMessage(msg.source, "لطفا نام و نام خانوادگی خود را وارد کنید."))
     }
   }
 
   onTextFilter(MoreInfoAndContactAdmin) { implicit msg =>
-    request(SendMessage(msg.source,  BOT_INTRODUCTION, replyMarkup = Some(ReplyKeyboardMarkup(
-      Seq(
-        Seq(
-          KeyboardButton(BackToMainMenu)
-        )
-      )))))
+    request(SendMessage(msg.source, BOT_INTRODUCTION,
+      replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))))
   }
 
   onTextFilter(BackToMainMenu) { implicit msg =>
     clearUserCache(msg.source.toString)
     startWithMainMenu
   }
+
   onTextFilter(CancelProcess) { implicit msg =>
     clearUserCache(msg.source.toString)
     startWithMainMenu

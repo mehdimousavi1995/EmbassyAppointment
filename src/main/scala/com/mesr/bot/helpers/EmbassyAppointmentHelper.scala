@@ -2,15 +2,15 @@ package com.mesr.bot.helpers
 
 import akka.actor.ActorSystem
 import com.bot4s.telegram.api.TelegramBot
-import com.bot4s.telegram.methods.SendMessage
-import com.bot4s.telegram.models.{KeyboardButton, Message, ReplyKeyboardMarkup}
-import com.mesr.bot.{BookAppointmentTicket, EmbassyAppointmentBot}
+import com.bot4s.telegram.methods.{SendMessage, SendPhoto}
+import com.bot4s.telegram.models.{InputFile, KeyboardButton, Message, ReplyKeyboardMarkup}
 import com.mesr.bot.Strings._
 import com.mesr.bot.UserCurrentState._
 import com.mesr.bot.persist.model.RegisteredAppointment
 import com.mesr.bot.persist.repos.{AdminCredentialsRepo, CountriesRepo, RegisteredAppointmentRepo}
-import com.mesr.bot.sdk.{CustomKeyboardButton, CustomReplyKeyboardMarkup, SendCustomPhotoMessage}
-import com.mesr.bot.sdk.ReplyKeyboardMarkupSerializer.sendHttpRequest
+import com.mesr.bot.util.ButtonsUtils
+import com.mesr.bot.{BookAppointmentTicket, EmbassyAppointmentBot}
+import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.Future
 import scala.util.Try
@@ -43,12 +43,9 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
   }
 
   def youDoNotHavePermissionGarbage()(implicit system: ActorSystem, msg: Message): Unit = {
-    request(SendMessage(msg.source, "شما دسترسی ادمین نداری. آشغال", replyMarkup = Some(ReplyKeyboardMarkup(
-      Seq(
-        Seq(
-          KeyboardButton(BackToMainMenu)
-        )
-      )))))
+    request(SendMessage(msg.source, "شما دسترسی ادمین نداری",
+      replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))
+    ))
   }
 
   import StringMaker._
@@ -68,7 +65,7 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
             }
           })
           _ <- request(SendMessage(msg.source, OPERATION_HAS_BEEN_DON_SUCCESSFULLY,
-            replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+            replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))))
         } yield ()
       } else youDoNotHavePermissionGarbage
     }
@@ -82,7 +79,7 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
           _ <- redisExt.delete(admin_s_key(msg.source.toString))
           _ <- pdb.run(CountriesRepo.delete(country))
           _ = request(SendMessage(msg.source, OPERATION_HAS_BEEN_DON_SUCCESSFULLY,
-            replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+            replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))))
         } yield ()
       } else youDoNotHavePermissionGarbage()
     }
@@ -90,13 +87,13 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
 
   def startWithMainMenu()(implicit system: ActorSystem, msg: Message): Unit = {
     isAdmin.map { exists =>
-      val btns = (if (exists) Seq(
+      val buttons = (if (exists) Seq(
         KeyboardButton(AdminAddOrRemoveCountry)
       ) else Seq.empty) ++ Seq(
         KeyboardButton(BookEmbassyAppointment),
         KeyboardButton(MoreInfoAndContactAdmin)
       )
-      request(SendMessage(msg.source, helloMessageStr, replyMarkup = Some(ReplyKeyboardMarkup(Seq(btns)))))
+      request(SendMessage(msg.source, helloMessageStr, replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(buttons))))
     }
 
   }
@@ -108,12 +105,7 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
     for {
       _ <- redisExt.set(sKey(msg.source.toString), GettingPhoneNumber)
       _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), BookAppointmentTicket(msg.text))
-      _ <- request(SendMessage(msg.source, ENTER_PHONE_NUMBER, replyMarkup = Some(ReplyKeyboardMarkup(
-        Seq(
-          Seq(
-            KeyboardButton(BackToMainMenu)
-          )
-        )))))
+      _ <- request(SendMessage(msg.source, ENTER_PHONE_NUMBER))
     } yield ()
   }
 
@@ -129,11 +121,11 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
           embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(phoneNumber = Some(phoneValidation.standardPhone)))
           _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
           _ = request(SendMessage(msg.source, "لطفا یکی از کشور ها زیر را انتخاب کنید.",
-            replyMarkup = Some(ReplyKeyboardMarkup(Seq(countries.map(s => KeyboardButton(s.country)) ++ Seq(KeyboardButton(BackToMainMenu)))))))
+            replyMarkup = Some(ReplyKeyboardMarkup(ButtonsUtils.splitList(countries.map(s => KeyboardButton(s.country))) ++ Seq(Seq(KeyboardButton(BackToMainMenu))), Some(true), Some(true)))
+          ))
         } yield ()
       } else {
-        request(SendMessage(msg.source, phoneValidation.description,
-          replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+        request(SendMessage(msg.source, phoneValidation.description))
         Future.successful()
       }
     } yield ()
@@ -142,15 +134,27 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
   def gettingCountryHandler()(implicit system: ActorSystem, msg: Message): Future[Unit] = for {
     _ <- redisExt.delete(sKey(msg.source.toString))
     _ <- redisExt.set(sKey(msg.source.toString), GettingDayOfFlight)
-    // todo handle safely, validate phonenumber before saving in user state, validate country
-    embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(country = msg.text))
-    _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
-    _ = request(SendMessage(msg.source, ENTER_DAY_OF_FLIGHT, replyMarkup = Some(ReplyKeyboardMarkup(
-      Seq(
-        Seq(
-          KeyboardButton(BackToMainMenu)
-        )
-      )))))
+    countries <- pdb.run(CountriesRepo.getAll).map(_.map(_.country))
+    _ <- if (countries.contains(msg.text.get)) {
+      for {
+        embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(country = msg.text))
+        _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
+        _ = request(SendMessage(msg.source, ENTER_DAY_OF_FLIGHT,
+          replyMarkup = ButtonsUtils.dayOfMonthBtns
+        ))
+      } yield ()
+    } else {
+      request(SendMessage(msg.source, "لطفا یکی از کشور ها زیر را انتخاب کنید.",
+        replyMarkup = Some(ReplyKeyboardMarkup(
+          ButtonsUtils.splitList(countries).map { g =>
+            g.map(country => KeyboardButton(country))
+          } ++ Seq(Seq(KeyboardButton(BackToMainMenu))),
+          Some(true),
+          Some(true)
+        ))))
+      Future.successful()
+    }
+
   } yield ()
 
   def gettingDayOfFlightHandler()(implicit system: ActorSystem, msg: Message): Future[Unit] = {
@@ -161,37 +165,40 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
         _ <- redisExt.set(sKey(msg.source.toString), GettingMonthOfFlight)
         embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(dayOfFlight = Some(day.toInt)))
         _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
-        _ = request(SendMessage(msg.source, ENTER_MONTH_OF_FLIGHT, replyMarkup = Some(ReplyKeyboardMarkup(
-          Seq(englishMonthLists.map(KeyboardButton(_)) ++ Seq(KeyboardButton(BackToMainMenu)))))))
+        _ = request(SendMessage(msg.source, ENTER_MONTH_OF_FLIGHT, replyMarkup = ButtonsUtils.monthOfYearBtns))
       } yield ()
     } else {
-      request(SendMessage(msg.source, ENTER_DAY_OF_FLIGHT_AGAIN, replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+      request(SendMessage(msg.source, ENTER_DAY_OF_FLIGHT_AGAIN,
+        replyMarkup = ButtonsUtils.dayOfMonthBtns
+      ))
       Future.successful()
     }
   }
 
 
-  def gettingMonthOfFlightHandler()(implicit system: ActorSystem, msg: Message): Future[Unit] =
-    if (englishMonthLists.contains(msg.text.get)) {
+  def gettingMonthOfFlightHandler()(implicit system: ActorSystem, msg: Message): Future[Unit] = {
+    val filteredText = msg.text.get.filter(s => s != ' ' && s != '.' && Try(s.toString.toInt).isFailure)
+    if (englishMonthLists.map(_._2).contains(filteredText)) {
       for {
         _ <- redisExt.delete(sKey(msg.source.toString))
         _ <- redisExt.set(sKey(msg.source.toString), GettingYearOfFlight)
-        embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(monthOfFlight = msg.text))
+        embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(monthOfFlight = Some(filteredText)))
         _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
-        _ = request(SendMessage(msg.source, ENTER_YEAR_OF_FLIGHT, replyMarkup = Some(ReplyKeyboardMarkup(
-          Seq(
+        _ = request(SendMessage(msg.source, ENTER_YEAR_OF_FLIGHT,
+          replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(
             Seq(
-              KeyboardButton("2019"), // todo read from database
+              KeyboardButton("2019"),
               KeyboardButton("2020"),
               KeyboardButton(BackToMainMenu)
-            )
-          )))))
+            ))
+          )))
       } yield ()
     } else {
-      request(SendMessage(msg.source, ENTER_MONTH_OF_FLIGHT_AGAIN, replyMarkup = Some(ReplyKeyboardMarkup(
-        Seq(englishMonthLists.map(KeyboardButton(_)) ++ Seq(KeyboardButton(BackToMainMenu)))))))
+      request(SendMessage(msg.source, ENTER_MONTH_OF_FLIGHT_AGAIN, replyMarkup = ButtonsUtils.monthOfYearBtns))
       Future.successful()
     }
+
+  }
 
 
   def gettingYearOfFlightHandler()(implicit system: ActorSystem, msg: Message): Future[Unit] = {
@@ -202,30 +209,27 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
         _ <- redisExt.set(sKey(msg.source.toString), GettingPassportScan)
         embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(yearOfFlight = msg.text.map(_.toInt)))
         _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
-        _ = request(SendMessage(msg.source, SEND_SCAN_OF_YOUR_PASSPORT, replyMarkup = Some(ReplyKeyboardMarkup(
-          Seq(
-            Seq(
-              KeyboardButton(BackToMainMenu)
-            )
-          )))))
+        _ = request(SendMessage(msg.source, SEND_SCAN_OF_YOUR_PASSPORT,
+          replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))))
       } yield ()
     } else {
-      request(SendMessage(msg.source, ENTER_YEAR_OF_FLIGHT_AGAIN, replyMarkup = Some(ReplyKeyboardMarkup(
-        Seq(
+      request(SendMessage(msg.source, ENTER_YEAR_OF_FLIGHT_AGAIN,
+        replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(
           Seq(
-            KeyboardButton("2019"), // todo read from database
+            KeyboardButton("2019"),
             KeyboardButton("2020"),
             KeyboardButton(BackToMainMenu)
-          )
-        )))))
+          ))
+        )))
       Future.successful()
     }
 
   }
 
-  def gettingPassportScanneErrorHandler()(implicit system: ActorSystem, msg: Message) = {
+  def gettingPassportScanneErrorHandler()(implicit system: ActorSystem, msg: Message): Future[Message] = {
     request(SendMessage(msg.source, INVALID_INPUT_PLEASE_SEND_PASSPORT_SCAN,
-      replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
+      replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))
+    ))
   }
 
 
@@ -239,18 +243,18 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
       fileId = embassyData.fillId.get
     )))
     _ = request(SendMessage(msg.source, YOUR_REQUEST_HAS_BEEN_REGISTERED_AND_WE_WILL_REACH_YOU_IN_A_FEW_HOURS(embassyData.fullName.get),
-      replyMarkup = Some(ReplyKeyboardMarkup(Seq(Seq(KeyboardButton(BackToMainMenu)))))))
-    _ <- sendHttpRequest(SendCustomPhotoMessage(
-      AdminChatId.toString,
-      Some(structApprovalBookEmbassyInfo(embassyData, true)),
-      embassyData.fillId.get,
-      Some(CustomReplyKeyboardMarkup(
-        Seq(
-          Seq(
-            CustomKeyboardButton(BackToMainMenu)
-          )
-        )))
-    ))
+      replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))))
+    admin_chat_ids <- pdb.run(AdminCredentialsRepo.getAllActive)
+    _ <- Future.sequence(
+      admin_chat_ids.map { admin_chat_id =>
+        request(SendPhoto(
+          chatId = admin_chat_id,
+          photo = InputFile(embassyData.fillId.get),
+          caption = Some(structApprovalBookEmbassyInfo(embassyData, sendToAdmin = true)),
+          replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))
+        ))
+      }
+    )
     _ <- clearUserCache(msg.source.toString)
   } yield ()
 
@@ -261,23 +265,18 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
     fileId = msg.photo.get.head.fileId
     embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(fillId = Some(fileId)))
     _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
-    _ <- sendHttpRequest(SendCustomPhotoMessage(
-      msg.source.toString,
-      Some(structApprovalBookEmbassyInfo(embassyData)),
-      fileId,
-      Some(CustomReplyKeyboardMarkup(Seq(Seq(CustomKeyboardButton(InfoApproval), CustomKeyboardButton(CancelProcess)))))
-    ))
+    _ = request(SendPhoto(
+      chatId = msg.source,
+      photo = InputFile(embassyData.fillId.get),
+      caption = Some(structApprovalBookEmbassyInfo(embassyData, sendToAdmin = true)),
+      replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(InfoApproval, BackToMainMenu).map(KeyboardButton(_))))))
   } yield ()
 
 
-  def unexpectedSituationHandler()(implicit system: ActorSystem, msg: Message) = {
+  def unexpectedSituationHandler()(implicit system: ActorSystem, msg: Message): Future[Message] = {
     clearUserCache(msg.source.toString)
-    request(SendMessage(msg.source, PLEASE_TRY_AGAIN, replyMarkup = Some(ReplyKeyboardMarkup(
-      Seq(
-        Seq(
-          KeyboardButton(BackToMainMenu)
-        )
-      )))))
+    request(SendMessage(msg.source, PLEASE_TRY_AGAIN,
+      replyMarkup = Some(ButtonsUtils.replyMarkupSingleRow(Seq(KeyboardButton(BackToMainMenu))))))
   }
 
 

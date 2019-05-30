@@ -38,7 +38,7 @@ trait BalePolling extends BotBase with BotExecutionContext with StrictLogging {
     * @param offset offset of polling
     */
   def pollingGetUpdates(offset: Option[Long]): Future[Seq[Update]] = {
-    after(500.millisecond, system.scheduler) {
+    after(1000.millisecond, system.scheduler) {
       request(
         GetUpdates(
           offset,

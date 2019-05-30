@@ -58,6 +58,7 @@ object PostgresDBExtension extends ExtensionId[PostgresDBExtensionImpl] with Ext
         log.error(e, "\n--- Migration failed ---\n")
         throw e
     }
+
     db
   }
 

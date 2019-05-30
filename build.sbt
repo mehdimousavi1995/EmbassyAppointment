@@ -3,7 +3,7 @@ name := "bot-mesr"
 
 enablePlugins(JavaAppPackaging)
 enablePlugins(DockerPlugin)
-
+enablePlugins(AshScriptPlugin)
 scalaVersion := "2.12.8"
 
 
@@ -30,10 +30,13 @@ libraryDependencies ++= Seq(
 
 )
 
-dockerBaseImage := "dockerproxy.bale.ai/openjdk:8"
-packageName in Docker := "docker.bale.ai/hackathon/mesr"
+
+dockerBaseImage := "openjdk:8-jre-alpine"
+daemonUserUid in Docker := None
+daemonUser in Docker := "daemon"
+packageName in Docker := "mehdimousavi1995/embassy_appointment"
 version in Docker := (version in ThisBuild).value
-dockerExposedPorts := Seq()
+dockerExposedPorts := Seq(80)
 dockerUpdateLatest := true
 logBuffered in Test := false
 
