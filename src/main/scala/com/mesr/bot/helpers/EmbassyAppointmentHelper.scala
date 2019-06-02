@@ -132,11 +132,11 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
   }
 
   def gettingCountryHandler()(implicit system: ActorSystem, msg: Message): Future[Unit] = for {
-    _ <- redisExt.delete(sKey(msg.source.toString))
-    _ <- redisExt.set(sKey(msg.source.toString), GettingDayOfFlight)
     countries <- pdb.run(CountriesRepo.getAll).map(_.map(_.country))
     _ <- if (countries.contains(msg.text.get)) {
       for {
+        _ <- redisExt.delete(sKey(msg.source.toString))
+        _ <- redisExt.set(sKey(msg.source.toString), GettingDayOfFlight)
         embassyData <- getUserState[BookAppointmentTicket](uKey(msg.source.toString)).map(_.get.copy(country = msg.text))
         _ <- setUserState[BookAppointmentTicket](uKey(msg.source.toString), embassyData)
         _ = request(SendMessage(msg.source, ENTER_DAY_OF_FLIGHT,
@@ -144,7 +144,7 @@ trait EmbassyAppointmentHelper extends TelegramBot with OperatorExtension {
         ))
       } yield ()
     } else {
-      request(SendMessage(msg.source, "لطفا یکی از کشور ها زیر را انتخاب کنید.",
+      request(SendMessage(msg.source, "ورودی نامعتبر است. لطفا یکی از کشور های زیر را انتخاب کنید.",
         replyMarkup = Some(ReplyKeyboardMarkup(
           ButtonsUtils.splitList(countries).map { g =>
             g.map(country => KeyboardButton(country))
